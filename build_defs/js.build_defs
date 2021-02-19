@@ -1,0 +1,98 @@
+def yarn_module(name, version, module_name=None, resolved_by:str='', out=None, hashes=None, test_only=False, patches=None,
+                visibility=None, deps=[], _tag=''):
+    """Install a third-party library from the Yarn registry into a local mirror that yarn_script can use.
+    The typical workflow for this is to use Yarn to set up your package.json and yarn.lock, then feed it through
+    //js/yarn_deps to generate the appropriate BUILD rules. The yarn files may be checked in and used to facilitate
+    watchers and other niceties from the yarn ecosystem.
+    See //js/yarn_deps/generate_third_party.sh for an example usage.
+    Args:
+      name (str): Name of the rule.
+      version (str): Version of the package to install.
+      package_name (str): The name of the node package. Defaults to name.
+      resolved_by (str): The URL that this dependency is resolved by. Optional.
+      out (str): Output name for this package. Defaults to name.
+      hashes (list): List of hashes that outputs must match.
+      test_only (bool): If True, can only be depended on by test rules.
+      patches (list): List of patch files to apply to the output library.
+      visibility (list): Visibility declaration for this rule.
+      deps (list): Any other dependencies of the rule.
+    """
+    package_name = package_name or name
+    url = resolved_by if resolved_by else 'https://registry.yarnpkg.com/%s/-/%s-%s.tgz' % (package_name, package_name, version)
+    cmd = 'echo "Fetching %s..." && mkdir target && curl -fsSL %s | tar -xz --no-same-owner --no-same-permissions -C target && mv target/* $OUT' % (url, url)
+    if patches:
+        cmd += ' && for SRC in $SRCS; do patch -p0 -l -i $SRC; done'
+
+    download = remote_file(
+        name = f'_{name}#download',
+        url = url,
+        out = out if out else name,
+        hashes = hashes,
+        test_only = test_only,
+        visibility = visibility,
+        extract = True,
+    )
+
+    external = [get_labels(dep, "node_module:")[0] for dep in deps]
+
+    return _node_module_bundle(
+        download = download,
+        name = name,
+        exported_deps = deps,
+        visibility = visibility,
+        external = external,
+        module_name=module_name,
+        version=version,
+    )
+
+def _node_module_bundle(name:str, module_name:str, version:str, download:str, exported_deps:list=[], visibility:list=[], external:list=[]):
+    cmd = f"$TOOLS --bundle $SRC/package/$(cat $SRC/package/package.json | jq -r .main)  $EXTERNAL_MODULES --outfile=$OUT"
+
+    return build_rule(
+        name = name,
+        outs = [name + ".js"],
+        srcs = [download],
+        exported_deps = exported_deps,
+        cmd = cmd,
+        tools = ["//third_party/go:esbuild"],
+        visibility = visibility,
+        labels = ['node_module:%s' % module_name, "module_version:%s@%s" % (module_name, version)],
+        pre_build = _set_external,
+    )
+
+
+
+def js_library(name:str, module_name:str='', srcs:list=[], deps:list=[], visibility:list=[], entry_point:str="index.js"):
+    cmd = f"$TOOLS --bundle $PKG_DIR/{entry_point} $EXTERNAL_MODULES --outfile=$OUT"
+
+    module_name = module_name or package_name() + f"/{name}"
+
+    return build_rule(
+        name = name,
+        outs = [name + ".js"],
+        srcs = srcs,
+        exported_deps = deps,
+        cmd = cmd,
+        tools = ["//third_party/go:esbuild"],
+        visibility = visibility,
+        labels = ['node_module:%s' % module_name],
+        pre_build = _set_external,
+    )
+
+def js_binary(name:str, entry_point:str="index.js", srcs:list=[], exported_deps:list=[], visibility:list=[], entry_point:str="index.js"):
+    cmd = f"$TOOLS --bundle $PKG_DIR/{entry_point} --outfile=$OUT"
+
+    return build_rule(
+        name = name,
+        outs = [name + ".js"],
+        srcs = srcs,
+        exported_deps = exported_deps,
+        cmd = cmd,
+        tools = ["//third_party/go:esbuild"],
+        visibility = visibility,
+    )
+
+def _set_external(name):
+    modules = " ".join([f"--external:'{module}'" for module in get_labels(name, 'node_module:')])
+    cmd = get_command(name)
+    set_command(name, f"export EXTERNAL_MODULES=\"{modules}\" && {cmd}")
