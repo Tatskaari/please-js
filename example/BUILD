@@ -1,6 +1,6 @@
 subinclude("//build_defs")
 
-js_library(
+js_binary(
     name = "test",
     srcs = [
         "index.js",

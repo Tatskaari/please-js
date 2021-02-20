@@ -1,5 +1,10 @@
-let bar = require("test/js/bar/bar")
+let bar = require("./bar/bar")
+// const semver = require("semver")
 
-export function foo() {
+function foo() {
     return bar.bar()
 }
+
+
+console.log(foo())
+// console.log(semver.minVersion('>=1.0.0'))

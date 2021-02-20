@@ -17,8 +17,8 @@ def yarn_module(name, version, module_name=None, resolved_by:str='', out=None, h
       visibility (list): Visibility declaration for this rule.
       deps (list): Any other dependencies of the rule.
     """
-    package_name = package_name or name
-    url = resolved_by if resolved_by else 'https://registry.yarnpkg.com/%s/-/%s-%s.tgz' % (package_name, package_name, version)
+    module_name = module_name or name
+    url = resolved_by if resolved_by else 'https://registry.yarnpkg.com/%s/-/%s-%s.tgz' % (module_name, module_name, version)
     cmd = 'echo "Fetching %s..." && mkdir target && curl -fsSL %s | tar -xz --no-same-owner --no-same-permissions -C target && mv target/* $OUT' % (url, url)
     if patches:
         cmd += ' && for SRC in $SRCS; do patch -p0 -l -i $SRC; done'
@@ -33,21 +33,18 @@ def yarn_module(name, version, module_name=None, resolved_by:str='', out=None, h
         extract = True,
     )
 
-    external = [get_labels(dep, "node_module:")[0] for dep in deps]
-
     return _node_module_bundle(
         download = download,
         name = name,
         exported_deps = deps,
         visibility = visibility,
-        external = external,
         module_name=module_name,
         version=version,
     )
 
 def _node_module_bundle(name:str, module_name:str, version:str, download:str, exported_deps:list=[], visibility:list=[], external:list=[]):
     cmd = f"$TOOLS --bundle $SRC/package/$(cat $SRC/package/package.json | jq -r .main)  $EXTERNAL_MODULES --outfile=$OUT"
-
+    out_location = package_name() + f"/{name}.js"
     return build_rule(
         name = name,
         outs = [name + ".js"],
@@ -56,7 +53,7 @@ def _node_module_bundle(name:str, module_name:str, version:str, download:str, ex
         cmd = cmd,
         tools = ["//third_party/go:esbuild"],
         visibility = visibility,
-        labels = ['node_module:%s' % module_name, "module_version:%s@%s" % (module_name, version)],
+        labels = ['node_module:%s:%s' % (module_name, out_location), "module_version:%s@%s" % (module_name, version)],
         pre_build = _set_external,
     )
 
@@ -66,6 +63,7 @@ def js_library(name:str, module_name:str='', srcs:list=[], deps:list=[], visibil
     cmd = f"$TOOLS --bundle $PKG_DIR/{entry_point} $EXTERNAL_MODULES --outfile=$OUT"
 
     module_name = module_name or package_name() + f"/{name}"
+    out_location = package_name() + f"/{name}.js"
 
     return build_rule(
         name = name,
@@ -75,24 +73,32 @@ def js_library(name:str, module_name:str='', srcs:list=[], deps:list=[], visibil
         cmd = cmd,
         tools = ["//third_party/go:esbuild"],
         visibility = visibility,
-        labels = ['node_module:%s' % module_name],
+        labels = ['node_module:%s:%s' % (module_name, out_location)],
         pre_build = _set_external,
     )
 
-def js_binary(name:str, entry_point:str="index.js", srcs:list=[], exported_deps:list=[], visibility:list=[], entry_point:str="index.js"):
-    cmd = f"$TOOLS --bundle $PKG_DIR/{entry_point} --outfile=$OUT"
+def js_binary(name:str, entry_point:str="index.js", srcs:list=[], deps:list=[], visibility:list=[]):
+    cmd = f"$TOOLS link --entry_point $PKG_DIR/{entry_point} --out=$OUT $MODULE_FLAGS"
 
     return build_rule(
         name = name,
         outs = [name + ".js"],
         srcs = srcs,
-        exported_deps = exported_deps,
+        exported_deps = deps,
         cmd = cmd,
-        tools = ["//third_party/go:esbuild"],
+        tools = ["//tools/esbuild"],
         visibility = visibility,
+        pre_build = _set_module_paths,
     )
 
 def _set_external(name):
-    modules = " ".join([f"--external:'{module}'" for module in get_labels(name, 'node_module:')])
+    modules = [module.split(":")[0] for module in get_labels(name, 'node_module:')]
+    flags = " ".join([f"--external:{module}" for module in modules])
     cmd = get_command(name)
-    set_command(name, f"export EXTERNAL_MODULES=\"{modules}\" && {cmd}")
+    set_command(name, f"export EXTERNAL_MODULES=\"{flags}\" && {cmd}")
+
+def _set_module_paths(name):
+    modules = [module.split(":") for module in get_labels(name, 'node_module:')]
+    flags = " ".join([f"--module {module}:{path}" for module, path in modules])
+    cmd = get_command(name)
+    set_command(name, f"export MODULE_FLAGS=\"{flags}\" && {cmd}")
