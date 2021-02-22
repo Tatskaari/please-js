@@ -1,11 +1,12 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
-
+	"fmt"
 	"github.com/evanw/esbuild/pkg/api"
 	"github.com/thought-machine/go-flags"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 )
 
 
@@ -30,16 +31,33 @@ var wd, wdErr = os.Getwd()
 var plugin = api.Plugin{
 	Name:  "please",
 	Setup: func(build api.PluginBuild) {
-		build.OnResolve(api.OnResolveOptions{Filter: `[^\.].*`},
+		build.OnResolve(api.OnResolveOptions{Filter: `.*`},
 			func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-				var path = filepath.Join(args.ResolveDir, args.Path)
-				if p, ok := opts.Modules[args.Path]; ok {
-					path = filepath.Join(wd, p)
+				fmt.Printf("Resolve %s\n", args.Path)
+				if _, ok := opts.Modules[args.Path]; ok {
+					fmt.Printf("Test %s\n", args.Path)
+					return api.OnResolveResult{
+						Path: args.Path,
+						Namespace: "please",
+					}, nil
+				} else {
+					fmt.Printf("No module for %s\n", args.Path)
 				}
-				return api.OnResolveResult{
-					Path: path,
-				}, nil
+				return api.OnResolveResult{}, nil
 			})
+		build.OnLoad(api.OnLoadOptions{Namespace: "please", Filter: `.*`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			path := filepath.Join(wd, opts.Modules[args.Path])
+			data, err := ioutil.ReadFile(path)
+			if err != nil {
+				return api.OnLoadResult{}, err
+			}
+
+			contents := string(data)
+			fmt.Printf("loaded %s\n", contents)
+			return api.OnLoadResult{
+				Contents: &contents,
+			}, nil
+		})
 	},
 }
 
@@ -59,6 +77,9 @@ func main() {
 		Bundle:      true,
 		Write:       true,
 		LogLevel:    api.LogLevelInfo,
+		Platform: api.PlatformNode,
+		Format: api.FormatESModule,
+		Plugins: []api.Plugin{plugin},
 	})
 	if len(result.Errors) > 0 {
 		os.Exit(1)

@@ -1,4 +1,4 @@
-let bar = require("./bar/bar")
+let bar = require("example/bar/bar")
 // const semver = require("semver")
 
 function foo() {

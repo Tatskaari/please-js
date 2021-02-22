@@ -60,7 +60,7 @@ def _node_module_bundle(name:str, module_name:str, version:str, download:str, ex
 
 
 def js_library(name:str, module_name:str='', srcs:list=[], deps:list=[], visibility:list=[], entry_point:str="index.js"):
-    cmd = f"$TOOLS --bundle $PKG_DIR/{entry_point} $EXTERNAL_MODULES --outfile=$OUT"
+    cmd = f"$TOOLS --format=cjs --platform=node --bundle $PKG_DIR/{entry_point} $EXTERNAL_MODULES --outfile=$OUT"
 
     module_name = module_name or package_name() + f"/{name}"
     out_location = package_name() + f"/{name}.js"
