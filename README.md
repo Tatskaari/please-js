@@ -1,7 +1,7 @@
 # Please with esbuild
 
 These rules attempt to use esbuild to treat Javascript bundling more like a traditional compiler. 
-By that I mean, they's some analogy to compiling and linking: 
+By that I mean, there's some analogy to distinct compile and link stages: 
 
 * Compiling: an npm module can be minified into a single `.js` file. In doing so, we provide a list of known dependencies of 
   this module, just like we would to a compiler. Any `require()` that isn't for one of these modules must be resolved at this stage. 
