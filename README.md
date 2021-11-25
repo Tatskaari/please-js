@@ -1,7 +1,9 @@
 # Please with esbuild
 
 These rules attempt to use esbuild to treat Javascript bundling more like a traditional compiler. 
-By that I mean, there's some analogy to distinct compile and link stages: 
+By that I mean, there's some analogy to distinct compile and link stages. In doing so, we can fit 
+javascript into the Please paradigm in a neat and incremental way. We can avoid using high level tools
+such as yarn, or webpack, and instead handle that with Please build definitions. 
 
 ## Compiling
 Similar to `go tool compile`, esbuild has a concept of resolution that happens before the load phase. This is similar 
