@@ -12,16 +12,16 @@ a list of known modules, that we can derrive from the direct dependencies of the
 
 ```golang
 func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-  # opts.Modules here are the list of known dependencies of this modules we're "compiling"
+  // opts.Modules here are the list of known dependencies of this modules we're "compiling"
   if path, ok := opts.Modules[args.Path]; ok { 
     return api.OnResolveResult{
       Path:      path,
       Namespace: "please",
     }, nil
   }
-  # If we don't know about this path, return an empty result and esbuild will try to resolve it 
-  # the normal way. This usually means that it's a internal require in the module itself but could
-  # also meen there's a missing dep on the build rule. 
+  // If we don't know about this path, return an empty result and esbuild will try to resolve it 
+  // the normal way. This usually means that it's a internal require in the module itself but could
+  // also meen there's a missing dep on the build rule. 
   return api.OnResolveResult{}, nil
 }
 ```
@@ -43,7 +43,7 @@ to produce a single `bundle.js`. At this point, we have injected some metadata i
 
  ```golang
 func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-  # args.Path is set by the resolver above for us
+  // args.Path is set by the resolver above for us
   path := filepath.Join(wd, args.Path)
   data, err := ioutil.ReadFile(path)
   if err != nil {
