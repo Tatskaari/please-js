@@ -43,7 +43,7 @@ def yarn_module(name, version, module_name=None, resolved_by:str='', out=None, h
     )
 
 def _node_module_bundle(name:str, module_name:str, version:str, download:str, exported_deps:list=[], visibility:list=[], external:list=[]):
-    cmd = f"$TOOLS --bundle $SRC/package/$(cat $SRC/package/package.json | jq -r .main)  $EXTERNAL_MODULES --outfile=$OUT"
+    cmd = f"$TOOLS --format=cjs --platform=node --bundle $SRC/package/$(cat $SRC/package/package.json | jq -r .main)  $EXTERNAL_MODULES --outfile=$OUT"
     out_location = package_name() + f"/{name}.js"
     return build_rule(
         name = name,
@@ -86,6 +86,7 @@ def js_binary(name:str, entry_point:str="index.js", srcs:list=[], deps:list=[], 
         srcs = srcs,
         exported_deps = deps,
         cmd = cmd,
+        binary = True,
         tools = ["//tools/esbuild"],
         visibility = visibility,
         pre_build = _set_module_paths,

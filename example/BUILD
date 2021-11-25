@@ -5,5 +5,5 @@ js_binary(
     srcs = [
         "index.js",
     ],
-    deps = ["//example/bar"],
+    deps = ["//example/bar", "//example/third_party/js:semver"],
 )
