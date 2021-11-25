@@ -19,6 +19,9 @@ func(args api.OnResolveArgs) (api.OnResolveResult, error) {
       Namespace: "please",
     }, nil
   }
+  # If we don't know about this path, return an empty result and esbuild will try to resolve it 
+  # the normal way. This usually means that it's a internal require in the module itself but could
+  # also meen there's a missing dep on the build rule. 
   return api.OnResolveResult{}, nil
 }
 ```
