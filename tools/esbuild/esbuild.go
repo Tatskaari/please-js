@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/evanw/esbuild/pkg/api"
 	"github.com/thought-machine/go-flags"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -12,12 +14,16 @@ import (
 var opts = struct {
 	Usage string
 
-	Modules     map[string]string `short:"m" long:"module" description:"Module mapping"`
-	EntryPoints []string          `short:"e" long:"entry_point"`
-	Out         string            `short:"o" long:"out"`
+	Out         string   `short:"o" long:"out"`
+	EntryPoints []string `short:"e" long:"entry_point"`
 
 	Link struct {
+		Modules map[string]string `short:"m" long:"module" description:"Module mapping"`
 	} `command:"link" alias:"c" description:"Compile the entry_points, redirecting requires for the provided modules"`
+	Compile struct {
+		PackageJSON string   `short:"p" long:"package_json"`
+		External    []string `long:"external"`
+	} `command:"compile" alias:"c" description:"Compile the entry_points, redirecting requires for the provided modules"`
 }{
 	Usage: `
 esbuild provides a wrapper around esbuild, using plugins to perform a more traditional "compile" and "link" workflow 
@@ -31,7 +37,7 @@ var plugin = api.Plugin{
 	Setup: func(build api.PluginBuild) {
 		build.OnResolve(api.OnResolveOptions{Filter: `.*`},
 			func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-				if path, ok := opts.Modules[args.Path]; ok {
+				if path, ok := opts.Link.Modules[args.Path]; ok {
 					return api.OnResolveResult{
 						Path:      path,
 						Namespace: "please",
@@ -55,8 +61,32 @@ var plugin = api.Plugin{
 	},
 }
 
+func findEntryPointFromPkgJSON() string {
+	data, err := os.ReadFile(opts.Compile.PackageJSON)
+	if err != nil {
+		log.Fatalf("failed to read %v: %v", opts.Compile.PackageJSON, err)
+	}
+	pkgJSON := struct {
+		Main string `json:"main"`
+	}{}
+
+	json.Unmarshal(data, &pkgJSON)
+
+	dir := filepath.Dir(opts.Compile.PackageJSON)
+	if pkgJSON.Main == "" {
+		return filepath.Join(dir, "index.js")
+	}
+
+	if _, err := os.Lstat(filepath.Join(dir, pkgJSON.Main)); err != nil {
+		return filepath.Join(dir, "index.js")
+	}
+	return filepath.Join(dir, pkgJSON.Main)
+}
+
 func main() {
-	_, err := flags.Parse(&opts)
+	p := flags.NewParser(&opts, flags.Default)
+
+	_, err := p.Parse()
 	if err != nil {
 		os.Exit(1)
 	}
@@ -65,17 +95,31 @@ func main() {
 		panic(wdErr)
 	}
 
-	result := api.Build(api.BuildOptions{
+	buildOpts := api.BuildOptions{
 		EntryPoints: opts.EntryPoints,
 		Outfile:     opts.Out,
 		Bundle:      true,
 		Write:       true,
 		LogLevel:    api.LogLevelInfo,
 		Platform:    api.PlatformNode,
-		Format:      api.FormatESModule,
-		Plugins:     []api.Plugin{plugin},
-	})
+	}
+
+	log.Printf(p.Command.Name)
+	if p.Active.Name == "link" {
+		buildOpts.Plugins = []api.Plugin{plugin}
+		buildOpts.Format = api.FormatESModule
+	} else {
+		if len(opts.EntryPoints) == 0 && opts.Compile.PackageJSON != "" {
+			buildOpts.EntryPoints = []string{findEntryPointFromPkgJSON()}
+		}
+		buildOpts.External = opts.Compile.External
+		buildOpts.Format = api.FormatCommonJS
+	}
+
+	log.Printf("external: %v", buildOpts.External)
+	result := api.Build(buildOpts)
 	if len(result.Errors) > 0 {
 		os.Exit(1)
 	}
+
 }

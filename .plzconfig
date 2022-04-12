@@ -1,5 +1,7 @@
+[Plugin "js"]
+
+[PluginDefinition]
+Name = js
+
 [Go]
 importpath = github.com/thought-machine/please-js
-
-[FeatureFlags]
-PleaseGoInstall = true
