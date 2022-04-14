@@ -1,4 +1,4 @@
-def yarn_module(name, version, module_name=None, resolved_by:str='', out=None, hashes=None, test_only=False, patches=None,
+def node_module(name, version, module_name=None,  resolved_by:str='', out=None, hashes=None, test_only=False, patches=None,
                 visibility=None, deps=[], _tag=''):
     """Install a third-party library from the Yarn registry into a local mirror that yarn_script can use.
     The typical workflow for this is to use Yarn to set up your package.json and yarn.lock, then feed it through
@@ -8,7 +8,7 @@ def yarn_module(name, version, module_name=None, resolved_by:str='', out=None, h
     Args:
       name (str): Name of the rule.
       version (str): Version of the package to install.
-      package_name (str): The name of the node package. Defaults to name.
+      module_name (str): The name of the node package. Defaults to name.
       resolved_by (str): The URL that this dependency is resolved by. Optional.
       out (str): Output name for this package. Defaults to name.
       hashes (list): List of hashes that outputs must match.
@@ -42,26 +42,22 @@ def yarn_module(name, version, module_name=None, resolved_by:str='', out=None, h
         version=version,
     )
 
-def _node_module_bundle(name:str, module_name:str, version:str, download:str, exported_deps:list=[], visibility:list=[], external:list=[]):
-    cmd = f"$TOOLS --format=cjs --platform=node --bundle $SRC/package/$(cat $SRC/package/package.json | jq -r .main)  $EXTERNAL_MODULES --outfile=$OUT"
+def _node_module_bundle(name:str, module_name:str, version:str, download:str, exported_deps:list, visibility:list):
     out_location = package_name() + f"/{name}.js"
     return build_rule(
         name = name,
         outs = [name + ".js"],
         srcs = [download],
         exported_deps = exported_deps,
-        cmd = cmd,
-        tools = ["//third_party/go:esbuild"],
+        tools = ["//tools/esbuild"],
         visibility = visibility,
         labels = ['node_module:%s:%s' % (module_name, out_location), "module_version:%s@%s" % (module_name, version)],
-        pre_build = _set_external,
+        pre_build = _compile_comand(),
     )
 
 
 
 def js_library(name:str, module_name:str='', srcs:list=[], deps:list=[], visibility:list=[], entry_point:str="index.js"):
-    cmd = f"$TOOLS --format=cjs --platform=node --bundle $PKG_DIR/{entry_point} $EXTERNAL_MODULES --outfile=$OUT"
-
     module_name = module_name or package_name() + f"/{name}"
     out_location = package_name() + f"/{name}.js"
 
@@ -70,36 +66,45 @@ def js_library(name:str, module_name:str='', srcs:list=[], deps:list=[], visibil
         outs = [name + ".js"],
         srcs = srcs,
         exported_deps = deps,
-        cmd = cmd,
-        tools = ["//third_party/go:esbuild"],
+        tools = ["//tools/esbuild"],
         visibility = visibility,
         labels = ['node_module:%s:%s' % (module_name, out_location)],
-        pre_build = _set_external,
+        pre_build = _compile_comand(entry_point),
     )
 
 def js_binary(name:str, entry_point:str="index.js", srcs:list=[], deps:list=[], visibility:list=[]):
-    cmd = f"$TOOLS link --entry_point $PKG_DIR/{entry_point} --out=$OUT $MODULE_FLAGS"
-
     return build_rule(
         name = name,
         outs = [name + ".js"],
         srcs = srcs,
         exported_deps = deps,
-        cmd = cmd,
         binary = True,
         tools = ["//tools/esbuild"],
         visibility = visibility,
-        pre_build = _set_module_paths,
+        pre_build = _link_command(entry_point),
     )
 
-def _set_external(name):
-    modules = [module.split(":")[0] for module in get_labels(name, 'node_module:')]
-    flags = " ".join([f"--external:{module}" for module in modules])
-    cmd = get_command(name)
-    set_command(name, f"export EXTERNAL_MODULES=\"{flags}\" && {cmd}")
+def _compile_comand(entry_point:str=None):
+    def pre_build(name):
+        entry_point_flag = f"--entry_point=$PKG_DIR/{entry_point}" if entry_point else "--package_json=$SRC/package/package.json"
+        externl_flags = _external_flags(name)
+        cmd = f"$TOOLS compile {entry_point_flag} {externl_flags} --out=$OUT"
+        set_command(name, cmd)
+    return pre_build
 
-def _set_module_paths(name):
+def _link_command(entry_point:str):
+    def pre_build(name):
+        # TODO(jpoole): probably want to add the shebang conditionally but this is useful for now
+        module_flags = _module_map_flags(name)
+        cmd = f"$TOOLS link --entry_point $PKG_DIR/{entry_point} {module_flags} --out=$OUT.tmp && echo \"#!/usr/bin/env node\" > $OUT && cat $OUT.tmp >> $OUT"
+        set_command(name, cmd)
+    return pre_build
+
+def _external_flags(name):
+    modules = [module.split(":")[0] for module in get_labels(name, 'node_module:')]
+    return " ".join([f"--external={module}" for module in modules])
+
+def _module_map_flags(name):
     modules = [module.split(":") for module in get_labels(name, 'node_module:')]
-    flags = " ".join([f"--module {module}:{path}" for module, path in modules])
-    cmd = get_command(name)
-    set_command(name, f"export MODULE_FLAGS=\"{flags}\" && {cmd}")
+    return " ".join([f"--module {module}:{path}" for module, path in modules])
+

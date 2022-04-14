@@ -3,7 +3,7 @@ package(default_visibility = ["PUBLIC"])
 go_mod_download(
     name = "esbuild_download",
     module = "github.com/evanw/esbuild",
-    version = "v0.8.49",
+    version = "v0.14.36",
 )
 
 go_module(
